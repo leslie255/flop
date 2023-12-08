@@ -1,6 +1,6 @@
 # FLOP
 
-**FLOP is a Language for Obliterating Programs**
+**FLOP is a Language for Obliterative Programs**
 
 A compiler project in which I experiment with bi-directional type checking.
 
