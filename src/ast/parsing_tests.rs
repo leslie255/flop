@@ -49,6 +49,14 @@ macro item {
 }
 
 item! {
+    name: ty_decl,
+    ty: TyDecl,
+    cases: {
+        "type T = T U;" => r#"TyDecl { type_: Token![type], quan: None, name: "T", eq: Token![=], body: [("T", Typename("U"))], semicolon: Token![;] }"#,
+    },
+}
+
+item! {
     name: decl,
     ty: Decl,
     cases: {
@@ -83,6 +91,7 @@ item! {
         "T a" => r#"Apply(Typename("T"), Typename("a"))"#,
         "T → U" => r#"Func(Typename("T"), Token![->], Typename("U"))"#,
         "(T)" => r#"InParens((ParenL, Typename("T"), ParenR))"#,
+        "{T}" => r#"Tuple((BraceL, [Typename("T")], BraceR))"#,
     },
 }
 
@@ -93,6 +102,7 @@ item! {
         "x" => r#"Var("x")"#,
         "x x" => r#"Apply(Var("x"), Var("x"))"#,
         "(x)" => r#"InParens((ParenL, Var("x"), ParenR))"#,
+        "{x}" => r#"Tuple((BraceL, [Var("x")], BraceR))"#,
     },
 }
 
@@ -103,6 +113,7 @@ item! {
         "x" => r#"Binding("x")"#,
         "x y" => r#"Binding("x")"#,
         "(x y)" => r#"InParens((ParenL, Apply(Binding("x"), Binding("y")), ParenR))"#,
+        "{x}" => r#"Tuple((BraceL, [Binding("x")], BraceR))"#,
     },
 }
 
@@ -113,6 +124,7 @@ item! {
         "x" => r#"Binding("x")"#,
         "x x" => r#"Apply(Binding("x"), Binding("x"))"#,
         "(x)" => r#"InParens((ParenL, Binding("x"), ParenR))"#,
+        "{x}" => r#"Tuple((BraceL, [Binding("x")], BraceR))"#,
     },
 }
 

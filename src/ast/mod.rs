@@ -19,6 +19,7 @@ pub struct Punctuated<T, P> {
 }
 
 pub type InParens<T> = (Spanned<ParenL>, Spanned<T>, Spanned<ParenR>);
+pub type InBraces<T> = (Spanned<BraceL>, Spanned<T>, Spanned<BraceR>);
 
 #[derive(Clone, PartialEq, From, Debug)]
 pub enum Item {
@@ -67,6 +68,7 @@ pub enum Ty {
     Apply(Box<Spanned<Ty>>, Box<Spanned<Ty>>),
     Func(Box<Spanned<Ty>>, Spanned<Token![->]>, Box<Spanned<Ty>>),
     InParens(Box<InParens<Ty>>),
+    Tuple(InBraces<Punctuated<Ty, Token![,]>>),
 }
 
 #[derive(Clone, PartialEq, From, Debug)]
@@ -74,12 +76,14 @@ pub enum Pat {
     Binding(Ident),
     Apply(Box<Spanned<Pat>>, Box<Spanned<Pat>>),
     InParens(Box<InParens<Pat>>),
+    Tuple(InBraces<Punctuated<Pat, Token![,]>>),
 }
 
 #[derive(Clone, PartialEq, From, Debug)]
 pub enum Pat_ {
     Binding(Ident),
     InParens(Box<InParens<Pat>>),
+    Tuple(InBraces<Punctuated<Pat, Token![,]>>),
 }
 
 impl Pat_ {
@@ -87,6 +91,7 @@ impl Pat_ {
         match self {
             Pat_::Binding(x) => Pat::Binding(x),
             Pat_::InParens(x) => Pat::InParens(x),
+            Pat_::Tuple(x) => Pat::Tuple(x),
         }
     }
 }
@@ -107,6 +112,7 @@ pub enum Expr {
     Var(Ident),
     Apply(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     InParens(Box<InParens<Expr>>),
+    Tuple(InBraces<Punctuated<Expr, Token![,]>>),
 }
 
 impl<T, P> Debug for Punctuated<T, P>

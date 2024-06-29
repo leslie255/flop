@@ -20,6 +20,7 @@ pub enum ParseError {
     ExpectExpr,
     ExpectQuanVars,
     ExpectDeclBody,
+    ExpectItem,
 }
 
 #[derive(Debug, Clone)]
@@ -208,6 +209,53 @@ where
     }
 }
 
+impl Parse for Item {
+    fn peek(state: &mut ParserState) -> bool {
+        TyDecl::peek(state) | Decl::peek(state)
+    }
+
+    fn parse(state: &mut ParserState) -> Result<Spanned<Self>, Spanned<ParseError>> {
+        if TyDecl::peek(state) {
+            TyDecl::parse(state).map(spanned_into)
+        } else if Decl::peek(state) {
+            Decl::parse(state).map(spanned_into)
+        } else {
+            Err(ParseError::ExpectItem.to_spanned(state.prev_span()))
+        }
+    }
+}
+
+impl Parse for TyDecl {
+    fn peek(state: &mut ParserState) -> bool {
+        <Token![type]>::peek(state)
+    }
+
+    fn parse(state: &mut ParserState) -> Result<Spanned<Self>, Spanned<ParseError>> {
+        let type_ = <Token![type]>::parse(state)?;
+        let quan = <Option<(Spanned<Quan>, Spanned<Token![.]>)>>::parse(state)?;
+        let name = Ident::parse(state)?;
+        let eq = <Token![=]>::parse(state)?;
+        let body = <Punctuated<(Spanned<Ident>, Spanned<Ty>), Token![|]>>::parse(state)?;
+        let semicolon = <Token![;]>::parse(state)?;
+        let span = Span::new(
+            Some(state.path()),
+            join_range(
+                find_span_start!(type_, quan, name, eq, body, semicolon),
+                find_span_start!(semicolon, body, eq, name, quan, type_),
+            ),
+        );
+        Ok(TyDecl {
+            type_,
+            quan: quan.into_inner(),
+            name,
+            eq,
+            body,
+            semicolon,
+        }
+        .to_spanned(span))
+    }
+}
+
 impl Parse for Decl {
     fn peek(state: &mut ParserState) -> bool {
         Ident::peek(state)
@@ -232,7 +280,8 @@ impl Parse for Decl {
             quan: quan.into_inner(),
             ty,
             body,
-        }.to_spanned(span))
+        }
+        .to_spanned(span))
     }
 }
 
@@ -316,7 +365,9 @@ impl Parse for QuanVars {
 
 impl Parse for Ty {
     fn peek(state: &mut ParserState) -> bool {
-        Ident::peek(state) | <InParens<Ty>>::peek(state)
+        Ident::peek(state)
+            | <InParens<Ty>>::peek(state)
+            | <InBraces<Punctuated<Ty, Token![,]>>>::peek(state)
     }
 
     fn parse(state: &mut ParserState) -> Result<Spanned<Self>, Spanned<ParseError>> {
@@ -324,6 +375,8 @@ impl Parse for Ty {
             Ident::parse(state).map(spanned_into)?
         } else if <InParens<Ty>>::peek(state) {
             <Box<InParens<Ty>>>::parse(state).map(spanned_into)?
+        } else if <InBraces<Punctuated<Ty, Token![,]>>>::peek(state) {
+            <InBraces<Punctuated<Ty, Token![,]>>>::parse(state).map(spanned_into)?
         } else {
             return Err(ParseError::ExpectTy.to_spanned(state.prev_span()));
         };
@@ -360,6 +413,8 @@ impl Parse for Pat_ {
             Ident::parse(state).map(spanned_into)
         } else if <InParens<Pat>>::peek(state) {
             <Box<InParens<Pat>>>::parse(state).map(spanned_into)
+        } else if <InBraces<Punctuated<Pat, Token![,]>>>::peek(state) {
+            <InBraces<Punctuated<Pat, Token![,]>>>::parse(state).map(spanned_into)
         } else {
             Err(ParseError::ExpectPat.to_spanned(state.prev_span()))
         }
@@ -385,6 +440,8 @@ impl Parse for Pat {
             Ok(pat)
         } else if <InParens<Pat>>::peek(state) {
             <Box<InParens<Pat>>>::parse(state).map(spanned_into)
+        } else if <InBraces<Punctuated<Pat, Token![,]>>>::peek(state) {
+            <InBraces<Punctuated<Pat, Token![,]>>>::parse(state).map(spanned_into)
         } else {
             Err(ParseError::ExpectPat.to_spanned(state.prev_span()))
         }
@@ -401,6 +458,8 @@ impl Parse for Expr {
             Ident::parse(state).map(spanned_into)?
         } else if <InParens<Expr>>::peek(state) {
             <Box<InParens<Expr>>>::parse(state).map(spanned_into)?
+        } else if <InBraces<Punctuated<Expr, Token![,]>>>::peek(state) {
+            <InBraces<Punctuated<Expr, Token![,]>>>::parse(state).map(spanned_into)?
         } else {
             return Err(ParseError::ExpectExpr.to_spanned(state.prev_span()));
         };

@@ -11,6 +11,7 @@
         | <ty> <ty>
         | <ty> → <ty>
         | ( <ty> )
+        | \{ {<ty>},* {,}? \}
 
 // Type with possible qualifiers.
 <ty+>   = { <quan> . }? <ty>
@@ -21,12 +22,14 @@
 
 // Pattern that don't stick to each other
 <pat'>  = <ident>
+        | \{ {<pat>},* {,}? \}
         | ( <pat> )
 
 <ty decl>   = type { <quan> . }? <ident> = { <ident> <ty> }|+ ;
 
 <expr>  = <ident>
         | <expr> <expr>
+        | \{ {<expr>},* {,}? \}
         | ( <expr> )
 
 // Examples:
