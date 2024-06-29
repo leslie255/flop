@@ -1,0 +1,10 @@
+[package]
+name = "flop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+unicode-width = "0.1.*"
+unicode-blocks = "0.1.*"
+derive_more = "0.99.*"
+index_vec = "0.1.*"

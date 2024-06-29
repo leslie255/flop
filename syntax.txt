@@ -1,0 +1,65 @@
+<item>  = <decl>
+        | <ty decl>
+
+<decl>  = <ident> : <ty+> ; { | {<pat'>}* = <expr> ; }+
+        | <ident> : <ty+> = <expr> ;
+
+<quan>  = ∀ <ident>
+        | ∀ ( {<ident>},* {,}? )
+
+<ty>   = <ident>
+        | <ty> <ty>
+        | <ty> → <ty>
+        | ( <ty> )
+
+// Type with possible qualifiers.
+<ty+>   = { <quan> . }? <ty>
+
+<pat>   = <ident>
+        | <pat> <pat>
+        | ( <pat> )
+
+// Pattern that don't stick to each other
+<pat'>  = <ident>
+        | ( <pat> )
+
+<ty decl>   = type { <quan> . }? <ident> = { <ident> <ty> }|+ ;
+
+<expr>  = <ident>
+        | <expr> <expr>
+        | ( <expr> )
+
+// Examples:
+
+```flop
+type ℕ  = zero
+        | suc ℕ;
+
+one : ℕ = suc zero;
+
+add_nat : ℕ → ℕ → ℕ
+    | zero    x = x;
+    | (suc x) y = suc (add_nat x y);
+
+mul_nat : ℕ → ℕ → ℕ
+    | zero       x = zero;
+    | (suc zero) x = x;
+    | (suc x)    y = suc (mul_nat x y);
+
+sub_nat : ℕ → ℕ → Maybe ℕ
+    | zero    zero    = Some zero;
+    | zero    (suc _) = None;
+    | (suc x) zero    = Some suc x;
+    | (suc x) (suc y) = Some semisub_nat x y;
+
+type ∀ α . Maybe α = Some α
+                   | None;
+
+map_maybe : ∀ (α, β) . (α → β) → Maybe α → Maybe β
+    | f (Some x) = Some (f x);
+    | _ None     = None;
+
+flat_map_maybe : ∀ (α, β) . (α → Maybe β) → Maybe α → Maybe β
+    | f (Some x) = f x;
+    | _ None     = None;
+```
