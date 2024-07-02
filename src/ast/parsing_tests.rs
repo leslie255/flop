@@ -52,7 +52,8 @@ item! {
     name: ty_decl,
     ty: TyDecl,
     cases: {
-        "type T = T U;" => r#"TyDecl { type_: Token![type], quan: None, name: "T", eq: Token![=], body: [("T", Typename("U"))], semicolon: Token![;] }"#,
+        "type T = T U;" => r#"TyDecl { type_: Token![type], quan: None, name: "T", eq: Token![=], body: [("T", Some(Typename("U")))], semicolon: Token![;] }"#,
+        "type T = T;" => r#"TyDecl { type_: Token![type], quan: None, name: "T", eq: Token![=], body: [("T", None)], semicolon: Token![;] }"#,
     },
 }
 
@@ -84,8 +85,8 @@ item! {
 }
 
 item! {
-    name: ty,
-    ty: Ty,
+    name: ty_expr,
+    ty: TyExpr,
     cases: {
         "T" => r#"Typename("T")"#,
         "T a" => r#"Apply(Typename("T"), Typename("a"))"#,

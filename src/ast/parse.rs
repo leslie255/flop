@@ -44,6 +44,9 @@ impl<'a> ParserState<'a> {
             prev_span,
         }
     }
+    pub fn is_eof(&mut self) -> bool {
+        self.peek().is_none()
+    }
     fn peek(&mut self) -> Option<&Spanned<Token>> {
         let &t = self.tokens.peek()?;
         self.prev_span = t.span();
@@ -54,22 +57,6 @@ impl<'a> ParserState<'a> {
         self.prev_span = t.span();
         Some(t)
     }
-    // fn peek_or_eof_error(&mut self) -> Result<&Spanned<Token>, Spanned<ParseError>> {
-    //     let &t = self
-    //         .tokens
-    //         .peek()
-    //         .ok_or_else(|| ParseError::UnexpectedEof.to_spanned(self.prev_span.clone()))?;
-    //     self.prev_span = t.span();
-    //     Ok(t)
-    // }
-    // fn next_or_eof_error(&mut self) -> Result<&Spanned<Token>, Spanned<ParseError>> {
-    //     let t = self
-    //         .tokens
-    //         .next()
-    //         .ok_or_else(|| ParseError::UnexpectedEof.to_spanned(self.prev_span.clone()))?;
-    //     self.prev_span = t.span();
-    //     Ok(t)
-    // }
     fn prev_span(&self) -> Span {
         self.prev_span.clone()
     }
@@ -235,7 +222,7 @@ impl Parse for TyDecl {
         let quan = <Option<(Spanned<Quan>, Spanned<Token![.]>)>>::parse(state)?;
         let name = Ident::parse(state)?;
         let eq = <Token![=]>::parse(state)?;
-        let body = <Punctuated<(Spanned<Ident>, Spanned<Ty>), Token![|]>>::parse(state)?;
+        let body = <Punctuated<(Spanned<Ident>, Spanned<Option<TyExpr>>), Token![|]>>::parse(state)?;
         let semicolon = <Token![;]>::parse(state)?;
         let span = Span::new(
             Some(state.path()),
@@ -265,7 +252,7 @@ impl Parse for Decl {
         let name = Ident::parse(state)?;
         let colon = <Token![:]>::parse(state)?;
         let quan = <Option<(Spanned<Quan>, Spanned<Token![.]>)>>::parse(state)?;
-        let ty = Ty::parse(state)?;
+        let ty = TyExpr::parse(state)?;
         let body = DeclBody::parse(state)?;
         let span = Span::new(
             Some(state.path()),
@@ -363,39 +350,39 @@ impl Parse for QuanVars {
     }
 }
 
-impl Parse for Ty {
+impl Parse for TyExpr {
     fn peek(state: &mut ParserState) -> bool {
         Ident::peek(state)
-            | <InParens<Ty>>::peek(state)
-            | <InBraces<Punctuated<Ty, Token![,]>>>::peek(state)
+            | <InParens<TyExpr>>::peek(state)
+            | <InBraces<Punctuated<TyExpr, Token![,]>>>::peek(state)
     }
 
     fn parse(state: &mut ParserState) -> Result<Spanned<Self>, Spanned<ParseError>> {
-        let mut ty: Spanned<Ty> = if Ident::peek(state) {
+        let mut ty: Spanned<TyExpr> = if Ident::peek(state) {
             Ident::parse(state).map(spanned_into)?
-        } else if <InParens<Ty>>::peek(state) {
-            <Box<InParens<Ty>>>::parse(state).map(spanned_into)?
-        } else if <InBraces<Punctuated<Ty, Token![,]>>>::peek(state) {
-            <InBraces<Punctuated<Ty, Token![,]>>>::parse(state).map(spanned_into)?
+        } else if <InParens<TyExpr>>::peek(state) {
+            <Box<InParens<TyExpr>>>::parse(state).map(spanned_into)?
+        } else if <InBraces<Punctuated<TyExpr, Token![,]>>>::peek(state) {
+            <InBraces<Punctuated<TyExpr, Token![,]>>>::parse(state).map(spanned_into)?
         } else {
             return Err(ParseError::ExpectTy.to_spanned(state.prev_span()));
         };
         loop {
             if <Token![->]>::peek(state) {
                 let arrow = <Token![->]>::parse(state)?;
-                let ty_ = Ty::parse(state)?;
+                let ty_ = TyExpr::parse(state)?;
                 let span = Span::new(
                     Some(state.path()),
                     join_range(find_span_start!(ty, ty_), find_span_end!(ty_, ty)),
                 );
-                ty = Ty::Func(Box::new(ty), arrow, Box::new(ty_)).to_spanned(span);
-            } else if Ty::peek(state) {
-                let ty_ = Ty::parse(state)?;
+                ty = TyExpr::Func(Box::new(ty), arrow, Box::new(ty_)).to_spanned(span);
+            } else if TyExpr::peek(state) {
+                let ty_ = TyExpr::parse(state)?;
                 let span = Span::new(
                     Some(state.path()),
                     join_range(find_span_start!(ty, ty_), find_span_end!(ty_, ty)),
                 );
-                ty = Ty::Apply(Box::new(ty), Box::new(ty_)).to_spanned(span);
+                ty = TyExpr::Apply(Box::new(ty), Box::new(ty_)).to_spanned(span);
             } else {
                 break Ok(ty);
             }

@@ -68,8 +68,10 @@ pub struct Spanned<T>(pub T, pub Span);
 
 impl<T> Spanned<T> {
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
-        let span = self.1;
-        f(self.0).to_spanned(span)
+        f(self.0).to_spanned(self.1)
+    }
+    pub fn try_map<U, E>(self, f: impl FnOnce(T) -> Result<U, E>) -> Result<Spanned<U>, E> {
+        f(self.0).map(|x| x.to_spanned(self.1))
     }
     pub fn into_boxed(self) -> Spanned<Box<T>> {
         self.map(Box::new)
@@ -82,6 +84,9 @@ impl<T> Spanned<T> {
     }
     pub fn span(&self) -> Span {
         self.1.clone()
+    }
+    pub fn as_ref(&self) -> Spanned<&T> {
+        (&self.0).to_spanned(self.span().clone())
     }
 }
 

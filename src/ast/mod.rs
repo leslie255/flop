@@ -32,13 +32,14 @@ pub struct Decl {
     pub name: Spanned<Ident>,
     pub colon: Spanned<Token![:]>,
     pub quan: Option<(Spanned<Quan>, Spanned<Token![.]>)>,
-    pub ty: Spanned<Ty>,
+    pub ty: Spanned<TyExpr>,
     pub body: Spanned<DeclBody>,
 }
 
 #[derive(Clone, PartialEq, From, Debug)]
 pub enum DeclBody {
     Inline(Spanned<Token![=]>, Spanned<Expr>, Spanned<Token![;]>),
+    #[allow(clippy::type_complexity)]
     Equations(Vec<Spanned<(Spanned<Token![|]>, Spanned<Equation>, Spanned<Token![;]>)>>),
 }
 
@@ -62,13 +63,18 @@ pub enum QuanVars {
     Multi(InParens<Punctuated<Ident, Token![,]>>),
 }
 
+/// As oppose to `hir::Ty`, this is just verbatim repr of a type expression.
 #[derive(Clone, PartialEq, From, Debug)]
-pub enum Ty {
+pub enum TyExpr {
     Typename(Ident),
-    Apply(Box<Spanned<Ty>>, Box<Spanned<Ty>>),
-    Func(Box<Spanned<Ty>>, Spanned<Token![->]>, Box<Spanned<Ty>>),
-    InParens(Box<InParens<Ty>>),
-    Tuple(InBraces<Punctuated<Ty, Token![,]>>),
+    Apply(Box<Spanned<TyExpr>>, Box<Spanned<TyExpr>>),
+    Func(
+        Box<Spanned<TyExpr>>,
+        Spanned<Token![->]>,
+        Box<Spanned<TyExpr>>,
+    ),
+    InParens(Box<InParens<TyExpr>>),
+    Tuple(InBraces<Punctuated<TyExpr, Token![,]>>),
 }
 
 #[derive(Clone, PartialEq, From, Debug)]
@@ -86,12 +92,12 @@ pub enum Pat_ {
     Tuple(InBraces<Punctuated<Pat, Token![,]>>),
 }
 
-impl Pat_ {
-    pub fn into_pat(self) -> Pat {
-        match self {
-            Pat_::Binding(x) => Pat::Binding(x),
-            Pat_::InParens(x) => Pat::InParens(x),
-            Pat_::Tuple(x) => Pat::Tuple(x),
+impl From<Pat_> for Pat {
+    fn from(value: Pat_) -> Self {
+        match value {
+            Pat_::Binding(x) => Self::Binding(x),
+            Pat_::InParens(x) => Self::InParens(x),
+            Pat_::Tuple(x) => Self::Tuple(x),
         }
     }
 }
@@ -103,7 +109,7 @@ pub struct TyDecl {
     pub name: Spanned<Ident>,
     pub eq: Spanned<Token![=]>,
     #[allow(clippy::type_complexity)]
-    pub body: Spanned<Punctuated<(Spanned<Ident>, Spanned<Ty>), Token![|]>>,
+    pub body: Spanned<Punctuated<(Spanned<Ident>, Spanned<Option<TyExpr>>), Token![|]>>,
     pub semicolon: Spanned<Token![;]>,
 }
 
@@ -181,5 +187,41 @@ impl<T, P> IntoIterator for Punctuated<T, P> {
             .into_iter()
             .map(|(x, _)| x)
             .chain(self.last.into_iter().map(|x| *x))
+    }
+}
+
+pub enum QuanVarsIter {
+    Empty,
+    Single(Spanned<Ident>),
+    Multi(<Punctuated<Ident, Token![,]> as IntoIterator>::IntoIter),
+}
+
+impl Iterator for QuanVarsIter {
+    type Item = Spanned<Ident>;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Empty => None,
+            Self::Single(x) => {
+                let x = x.clone();
+                *self = Self::Empty;
+                Some(x)
+            }
+            Self::Multi(xs) => xs.next(),
+        }
+    }
+}
+
+impl IntoIterator for Spanned<QuanVars> {
+    type Item = Spanned<Ident>;
+
+    type IntoIter = QuanVarsIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Spanned(QuanVars::Single(x), span) => QuanVarsIter::Single(Spanned(x, span)),
+            Spanned(QuanVars::Multi((_, Spanned(xs, _), _)), _) => {
+                QuanVarsIter::Multi(xs.into_iter())
+            }
+        }
     }
 }

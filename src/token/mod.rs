@@ -69,7 +69,7 @@ pub mod tokens {
         },
     }
 
-    #[derive(Clone, PartialEq, PartialOrd, Default)]
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
     pub struct Ident(pub Rc<str>);
     impl TokenTrait for Ident {
         fn to_token(self) -> Token {
