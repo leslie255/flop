@@ -55,11 +55,10 @@ pub enum FuncId {
 }
 
 impl Debug for FuncId {
-    #[allow(clippy::only_used_in_recursion)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            x @ FuncId::UserFunc(..) => Debug::fmt(x, f),
-            x @ FuncId::ConstructorFunc(..) => Debug::fmt(x, f),
+            FuncId::UserFunc(x) => Debug::fmt(x, f),
+            FuncId::ConstructorFunc(x) => Debug::fmt(x, f),
         }
     }
 }
@@ -113,9 +112,15 @@ impl Debug for Ty {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
-    Var(VarId),
+    Value(Value),
     Apply(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     Tuple(Vec<Spanned<Expr>>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, From)]
+pub enum Value {
+    Var(VarId),
+    Func(FuncId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

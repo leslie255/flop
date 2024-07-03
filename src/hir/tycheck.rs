@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 use crate::span::ToSpanned;
@@ -34,26 +32,34 @@ fn tycheck_func<'p>(cx: &mut Cx<'p>, func: &'p UserFunc) -> Result<(), Spanned<T
     Ok(())
 }
 
-#[allow(unused_variables)]
 fn tycheck_expr(
     cx: &mut Cx,
     Spanned(expr, span): &Spanned<Expr>,
     expect_ty: &Ty,
 ) -> Result<(), Spanned<TycheckError>> {
     match expr {
-        Expr::Var(x) => {
-            let expr_ty = cx.current_equ_cx().bindings[x];
+        &Expr::Value(x) => {
+            let expr_ty = typeof_value(cx, x);
             if expr_ty == expect_ty {
                 Ok(())
             } else {
                 Err(TycheckError::MismatchedTy {
                     expect: expect_ty.clone(),
                     found: expr_ty.clone(),
-                }.to_spanned(span.clone()))
+                }
+                .to_spanned(span.clone()))
             }
         }
         Expr::Apply(_, _) => todo!(),
-        Expr::Tuple(xs) => todo!(),
+        Expr::Tuple(_) => todo!(),
+    }
+}
+
+fn typeof_value<'p>(cx: &Cx<'p>, value: Value) -> &'p Ty {
+    match value {
+        Value::Var(x) => cx.current_equ_cx().bindings[&x],
+        Value::Func(FuncId::UserFunc(x)) => &cx.program.user_funcs[x].ty,
+        Value::Func(FuncId::ConstructorFunc(x)) => &cx.program.constructor_funcs[x].ty,
     }
 }
 
@@ -161,7 +167,7 @@ fn match_bindings<'p>(
             }
             _ => return Ok(pairs),
         };
-        match_pat_ty(&mut pairs, cx, pat, arg_ty)?;
+        match_pat_ty(&mut pairs, pat, arg_ty)?;
     }
     Ok(pairs)
 }
@@ -183,7 +189,6 @@ fn func_return_ty(func_ty: PolyTy, arg_count: usize) -> &Ty {
 /// Match a pat with a type, collects produced bindings `x: τ` to `acc`.
 fn match_pat_ty<'p>(
     acc: &mut HashMap<VarId, &'p Ty>,
-    #[allow(unused_variables)] cx: &Cx<'p>,
     Spanned(pat, span): &'p Spanned<Pat>,
     ty: &'p Ty,
 ) -> Result<(), Spanned<TycheckError>> {

@@ -71,17 +71,17 @@ pub fn build_hir(raw_program: RawProgram) -> Result<HirProgram, Spanned<HirBuild
         item_local: None,
         eq_local: None,
     };
-    let user_funcs: IndexVec<UserFuncId, Spanned<UserFunc>> = raw_program
-        .funcs
-        .into_iter()
-        .map(|func| build_func(&mut state, func).map(spanned_into))
-        .collect::<Result<_, _>>()?;
     let mut constructor_funcs: IndexVec<ConstructorFuncId, Spanned<ConstructorFunc>> =
         IndexVec::new();
     let adts: IndexVec<AdtId, Spanned<Adt>> = raw_program
         .adts
         .into_iter_enumerated()
         .map(|(adt_id, adt)| build_adt(&mut state, &mut constructor_funcs, adt_id, adt))
+        .collect::<Result<_, _>>()?;
+    let user_funcs: IndexVec<UserFuncId, Spanned<UserFunc>> = raw_program
+        .funcs
+        .into_iter()
+        .map(|func| build_func(&mut state, func).map(spanned_into))
         .collect::<Result<_, _>>()?;
     Ok(HirProgram {
         adts,
@@ -169,7 +169,7 @@ fn build_adt(
     state.item_local = Some(local_state);
     let this_ty = Ty::Adt(adt_id).to_spanned(span.clone());
     let mut constructors = <Vec<ConstructorFuncId>>::with_capacity(ty_decl.body.len());
-    for (i, Spanned((Spanned(ident, _), ty), span)) in
+    for (i, Spanned((Spanned(variant_name, variant_name_span), ty), span)) in
         ty_decl.body.into_inner().into_iter().enumerate()
     {
         let constructor_func_ty = match ty {
@@ -181,7 +181,7 @@ fn build_adt(
             Spanned(None, _) => this_ty.clone(),
         };
         let consturctor_func = ConstructorFunc {
-            name: ident,
+            name: variant_name.clone(),
             tyvars: tyvars.clone(),
             ty: constructor_func_ty,
             adt: adt_id,
@@ -189,6 +189,15 @@ fn build_adt(
         }
         .to_spanned(span);
         let func_id = constructor_funcs.push(spanned_into(consturctor_func));
+        if state
+            .func_ids
+            .insert(variant_name.clone(), func_id.into())
+            .is_some()
+        {
+            return Err(
+                HirBuildError::DuplicatedFuncName(variant_name).to_spanned(variant_name_span)
+            );
+        };
         constructors.push(func_id);
     }
     state.item_local = None;
@@ -221,11 +230,14 @@ fn build_expr(
 ) -> Result<Spanned<Expr>, Spanned<HirBuildError>> {
     match expr {
         ast::Expr::Var(name) => {
-            let var_id = match state.eq_local.as_ref().unwrap().var_ids.get(&name) {
-                Some(&x) => x,
-                None => return Err(HirBuildError::VarNotExist(name).to_spanned(span)),
+            let value: Value = match state.eq_local.as_ref().unwrap().var_ids.get(&name) {
+                Some(&var_id) => var_id.into(),
+                None => match state.func_ids.get(&name) {
+                    Some(&f) => f.into(),
+                    None => return Err(HirBuildError::VarNotExist(name).to_spanned(span)),
+                }
             };
-            Ok(Expr::Var(var_id).to_spanned(span))
+            Ok(Expr::Value(value).to_spanned(span))
         }
         ast::Expr::Apply(box e0, box e1) => Ok(Expr::Apply(
             Box::new(build_expr(state, e0)?),
