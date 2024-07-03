@@ -17,7 +17,7 @@
 <ty+>   = { <quan> . }? <ty>
 
 <pat>   = <ident>
-        | <pat> <pat>
+        | <ident> <pat>
         | ( <pat> )
 
 // Pattern that don't stick to each other
@@ -53,7 +53,7 @@ sub_nat : ℕ → ℕ → Maybe ℕ
     | zero    zero    = Some zero;
     | zero    (suc _) = None;
     | (suc x) zero    = Some suc x;
-    | (suc x) (suc y) = Some semisub_nat x y;
+    | (suc x) (suc y) = Some (sub_nat x y);
 
 type ∀ α . Maybe α = Some α
                    | None;

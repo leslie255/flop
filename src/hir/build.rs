@@ -21,7 +21,7 @@ pub enum HirBuildError {
 #[derive(Debug, Clone, Default)]
 pub struct RawProgram {
     adts: IndexVec<AdtId, Spanned<ast::TyDecl>>,
-    funcs: IndexVec<FuncId, Spanned<ast::Decl>>,
+    funcs: IndexVec<UserFuncId, Spanned<ast::Decl>>,
     adt_ids: HashMap<Ident, AdtId>,
     func_ids: HashMap<Ident, FuncId>,
 }
@@ -33,7 +33,7 @@ impl RawProgram {
     ) -> Result<(), Spanned<HirBuildError>> {
         let Spanned(name, name_span) = decl.name.clone();
         let func_id = self.funcs.push(decl.to_spanned(span));
-        let has_dup = self.func_ids.insert(name.clone(), func_id).is_some();
+        let has_dup = self.func_ids.insert(name.clone(), func_id.into()).is_some();
         if has_dup {
             Err(HirBuildError::DuplicatedFuncName(name).to_spanned(name_span))
         } else {
@@ -71,17 +71,23 @@ pub fn build_hir(raw_program: RawProgram) -> Result<HirProgram, Spanned<HirBuild
         item_local: None,
         eq_local: None,
     };
-    let mut funcs: IndexVec<FuncId, Spanned<Func>> = raw_program
+    let user_funcs: IndexVec<UserFuncId, Spanned<UserFunc>> = raw_program
         .funcs
         .into_iter()
         .map(|func| build_func(&mut state, func).map(spanned_into))
         .collect::<Result<_, _>>()?;
+    let mut constructor_funcs: IndexVec<ConstructorFuncId, Spanned<ConstructorFunc>> =
+        IndexVec::new();
     let adts: IndexVec<AdtId, Spanned<Adt>> = raw_program
         .adts
         .into_iter_enumerated()
-        .map(|(adt_id, adt)| build_adt(&mut state, &mut funcs, adt_id, adt))
+        .map(|(adt_id, adt)| build_adt(&mut state, &mut constructor_funcs, adt_id, adt))
         .collect::<Result<_, _>>()?;
-    Ok(HirProgram { adts, funcs })
+    Ok(HirProgram {
+        adts,
+        user_funcs,
+        constructor_funcs,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -126,8 +132,7 @@ fn build_func(
         .take()
         .unwrap()
         .tyvars
-        .into_iter()
-        .map(|(_, x)| x)
+        .into_values()
         .collect();
     Ok(UserFunc {
         name: decl.name.into_inner(),
@@ -155,7 +160,7 @@ fn make_item_local_state(quan: Option<(Spanned<ast::Quan>, Spanned<Token![.]>)>)
 #[allow(unreachable_code, unused_variables)]
 fn build_adt(
     state: &mut BuilderState,
-    funcs: &mut IndexVec<FuncId, Spanned<Func>>,
+    constructor_funcs: &mut IndexVec<ConstructorFuncId, Spanned<ConstructorFunc>>,
     adt_id: AdtId,
     Spanned(ty_decl, span): Spanned<ast::TyDecl>,
 ) -> Result<Spanned<Adt>, Spanned<HirBuildError>> {
@@ -163,18 +168,19 @@ fn build_adt(
     let tyvars: Vec<TyVarId> = local_state.tyvars.iter().map(|(_, &x)| x).collect();
     state.item_local = Some(local_state);
     let this_ty = Ty::Adt(adt_id).to_spanned(span.clone());
-    let mut constructors = <Vec<FuncId>>::with_capacity(ty_decl.body.len());
+    let mut constructors = <Vec<ConstructorFuncId>>::with_capacity(ty_decl.body.len());
     for (i, Spanned((Spanned(ident, _), ty), span)) in
         ty_decl.body.into_inner().into_iter().enumerate()
     {
         let constructor_func_ty = match ty {
             Spanned(Some(ty), span_) => {
                 let ty = build_ty(state, ty.to_spanned(span_))?;
-                Ty::Func(Box::new(ty), Box::new(this_ty.clone())).to_spanned(span.clone())
+                Ty::Func(Box::new(ty.into_inner()), Box::new(this_ty.inner().clone()))
+                    .to_spanned(span.clone())
             }
             Spanned(None, _) => this_ty.clone(),
         };
-        let consturctor_func = ConsturctorFunc {
+        let consturctor_func = ConstructorFunc {
             name: ident,
             tyvars: tyvars.clone(),
             ty: constructor_func_ty,
@@ -182,7 +188,7 @@ fn build_adt(
             variant: VariantId(i),
         }
         .to_spanned(span);
-        let func_id = funcs.push(spanned_into(consturctor_func));
+        let func_id = constructor_funcs.push(spanned_into(consturctor_func));
         constructors.push(func_id);
     }
     state.item_local = None;
@@ -250,11 +256,17 @@ fn build_pat(
             eq_local.var_ids.insert(name, var_id);
             Ok(Pat::Binding(var_id).to_spanned(span))
         }
-        ast::Pat::Apply(box p0, box p1) => Ok(Pat::Apply(
-            Box::new(build_pat(state, p0)?),
-            Box::new(build_pat(state, p1)?),
-        )
-        .to_spanned(span)),
+        ast::Pat::Apply(Spanned(ident, ident_span), box p1) => {
+            let adt_id = match state.adt_ids.get(&ident) {
+                Some(&x) => x,
+                None => return Err(HirBuildError::TyNotExist(ident).to_spanned(span)),
+            };
+            Ok(Pat::Apply(
+                adt_id.to_spanned(ident_span),
+                Box::new(build_pat(state, p1)?),
+            )
+            .to_spanned(span))
+        }
         ast::Pat::InParens(box (_, p, _)) => build_pat(state, p),
         ast::Pat::Tuple((_, ps, _)) => {
             let ps = ps
@@ -283,13 +295,13 @@ fn build_ty(
             Ok(ty.to_spanned(span))
         }
         ast::TyExpr::Apply(box t0, box t1) => Ok(Ty::Apply(
-            Box::new(build_ty(state, t0)?),
-            Box::new(build_ty(state, t1)?),
+            Box::new(build_ty(state, t0)?.into_inner()),
+            Box::new(build_ty(state, t1)?.into_inner()),
         )
         .to_spanned(span)),
         ast::TyExpr::Func(box t0, _, box t1) => Ok(Ty::Func(
-            Box::new(build_ty(state, t0)?),
-            Box::new(build_ty(state, t1)?),
+            Box::new(build_ty(state, t0)?.into_inner()),
+            Box::new(build_ty(state, t1)?.into_inner()),
         )
         .to_spanned(span)),
         ast::TyExpr::InParens(box (_, t, _)) => build_ty(state, t),
@@ -297,7 +309,7 @@ fn build_ty(
             let ts = ts
                 .into_inner()
                 .into_iter()
-                .map(|x| build_ty(state, x))
+                .map(|x| build_ty(state, x).map(Spanned::into_inner))
                 .collect::<Result<_, _>>()?;
             Ok(Ty::Tuple(ts).to_spanned(span))
         }

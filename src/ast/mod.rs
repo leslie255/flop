@@ -80,7 +80,7 @@ pub enum TyExpr {
 #[derive(Clone, PartialEq, From, Debug)]
 pub enum Pat {
     Binding(Ident),
-    Apply(Box<Spanned<Pat>>, Box<Spanned<Pat>>),
+    Apply(Spanned<Ident>, Box<Spanned<Pat>>),
     InParens(Box<InParens<Pat>>),
     Tuple(InBraces<Punctuated<Pat, Token![,]>>),
 }

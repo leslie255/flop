@@ -37,4 +37,5 @@ fn main() {
     };
     let hir_program = hir::build::build_hir(raw_program).unwrap();
     dbg!(&hir_program);
+    hir::tycheck::tycheck(&hir_program).unwrap();
 }

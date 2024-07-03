@@ -126,7 +126,7 @@ where
             last: None,
         };
         let mut start = None;
-        let mut end = start;
+        let mut end = None;
         loop {
             if !T::peek(state) {
                 break;
@@ -222,7 +222,8 @@ impl Parse for TyDecl {
         let quan = <Option<(Spanned<Quan>, Spanned<Token![.]>)>>::parse(state)?;
         let name = Ident::parse(state)?;
         let eq = <Token![=]>::parse(state)?;
-        let body = <Punctuated<(Spanned<Ident>, Spanned<Option<TyExpr>>), Token![|]>>::parse(state)?;
+        let body =
+            <Punctuated<(Spanned<Ident>, Spanned<Option<TyExpr>>), Token![|]>>::parse(state)?;
         let semicolon = <Token![;]>::parse(state)?;
         let span = Span::new(
             Some(state.path()),
@@ -415,16 +416,17 @@ impl Parse for Pat {
 
     fn parse(state: &mut ParserState) -> Result<Spanned<Self>, Spanned<ParseError>> {
         if Ident::peek(state) {
-            let mut pat: Spanned<Pat> = Ident::parse(state)?.map(Into::into);
-            while Pat::peek(state) {
-                let pat_ = Pat::parse(state)?;
+            let ident = Ident::parse(state)?;
+            if Pat::peek(state) {
+                let pat = Pat::parse(state)?;
                 let span = Span::new(
                     Some(state.path()),
-                    join_range(find_span_start!(pat, pat_), find_span_end!(pat_, pat)),
+                    join_range(find_span_start!(ident, pat), find_span_end!(pat, ident)),
                 );
-                pat = Pat::Apply(Box::new(pat), Box::new(pat_)).to_spanned(span);
+                Ok(Pat::Apply(ident, Box::new(pat)).to_spanned(span))
+            } else {
+                Ok(spanned_into(ident))
             }
-            Ok(pat)
         } else if <InParens<Pat>>::peek(state) {
             <Box<InParens<Pat>>>::parse(state).map(spanned_into)
         } else if <InBraces<Punctuated<Pat, Token![,]>>>::peek(state) {
@@ -437,7 +439,8 @@ impl Parse for Pat {
 
 impl Parse for Expr {
     fn peek(state: &mut ParserState) -> bool {
-        Ident::peek(state) | <InParens<Expr>>::peek(state)
+        Ident::peek(state) | <InParens<Expr>>::peek(state) | <InBraces<Punctuated<Expr, Token![,]>>>::peek(state)
+
     }
 
     fn parse(state: &mut ParserState) -> Result<Spanned<Self>, Spanned<ParseError>> {

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod build;
+pub mod tycheck;
 
 use std::fmt::{self, Debug};
 
@@ -11,15 +12,20 @@ use index_vec::IndexVec;
 
 #[derive(Clone, Default)]
 pub struct HirProgram {
-    adts: IndexVec<AdtId, Spanned<Adt>>,
-    funcs: IndexVec<FuncId, Spanned<Func>>,
+    pub adts: IndexVec<AdtId, Spanned<Adt>>,
+    pub user_funcs: IndexVec<UserFuncId, Spanned<UserFunc>>,
+    pub constructor_funcs: IndexVec<ConstructorFuncId, Spanned<ConstructorFunc>>,
 }
 
 impl Debug for HirProgram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HirProgram")
             .field("adts", &self.adts.fmt_enumerated())
-            .field("funcs", &self.funcs.fmt_enumerated())
+            .field("user_funcs", &self.user_funcs.fmt_enumerated())
+            .field(
+                "constructor_funcs",
+                &self.constructor_funcs.fmt_enumerated(),
+            )
             .finish()
     }
 }
@@ -31,9 +37,31 @@ define_idx_type! {
 }
 
 define_idx_type! {
-    /// Globally unique ID for functions.
-    name: FuncId,
-    debug_fmt: "func{}",
+    /// Globally unique ID for user-defined functions.
+    name: UserFuncId,
+    debug_fmt: "user_func{}",
+}
+
+define_idx_type! {
+    /// Globally unique ID for constructor functions.
+    name: ConstructorFuncId,
+    debug_fmt: "constructor_func{}",
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From)]
+pub enum FuncId {
+    UserFunc(UserFuncId),
+    ConstructorFunc(ConstructorFuncId),
+}
+
+impl Debug for FuncId {
+    #[allow(clippy::only_used_in_recursion)]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            x @ FuncId::UserFunc(..) => Debug::fmt(x, f),
+            x @ FuncId::ConstructorFunc(..) => Debug::fmt(x, f),
+        }
+    }
 }
 
 define_idx_type! {
@@ -59,9 +87,9 @@ pub enum Ty {
     Adt(AdtId),
     #[allow(clippy::enum_variant_names)]
     TyVar(TyVarId),
-    Apply(Box<Spanned<Ty>>, Box<Spanned<Ty>>),
-    Func(Box<Spanned<Ty>>, Box<Spanned<Ty>>),
-    Tuple(Vec<Spanned<Ty>>),
+    Apply(Box<Ty>, Box<Ty>),
+    Func(Box<Ty>, Box<Ty>),
+    Tuple(Vec<Ty>),
 }
 
 impl Debug for Ty {
@@ -75,9 +103,7 @@ impl Debug for Ty {
                 [] => write!(f, "{{}}"),
                 [xs @ .., y] => {
                     write!(f, "{{")?;
-                    xs.iter()
-                        .map(|t| write!(f, "{t:?},"))
-                        .collect::<fmt::Result>()?;
+                    xs.iter().try_for_each(|t| write!(f, "{t:?},"))?;
                     write!(f, "{y:?}}}")
                 }
             },
@@ -95,7 +121,7 @@ pub enum Expr {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pat {
     Binding(VarId),
-    Apply(Box<Spanned<Pat>>, Box<Spanned<Pat>>),
+    Apply(Spanned<AdtId>, Box<Spanned<Pat>>),
     Tuple(Vec<Spanned<Pat>>),
 }
 
@@ -103,21 +129,6 @@ pub enum Pat {
 pub struct Equation {
     pub lhs: Vec<Spanned<Pat>>,
     pub rhs: Spanned<Expr>,
-}
-
-#[derive(Clone, PartialEq, Eq, From)]
-pub enum Func {
-    User(UserFunc),
-    Constructor(ConsturctorFunc),
-}
-
-impl Debug for Func {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Func::User(x) => Debug::fmt(x, f),
-            Func::Constructor(x) => Debug::fmt(x, f),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,7 +141,7 @@ pub struct UserFunc {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ConsturctorFunc {
+pub struct ConstructorFunc {
     pub name: Ident,
     pub tyvars: Vec<TyVarId>,
     pub ty: Spanned<Ty>,
@@ -143,5 +154,5 @@ pub struct Adt {
     /// For debugging and error reporting.
     pub name: Ident,
     pub tyvars: Vec<TyVarId>,
-    pub constructors: Vec<FuncId>,
+    pub constructors: Vec<ConstructorFuncId>,
 }
